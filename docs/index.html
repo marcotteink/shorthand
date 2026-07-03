@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shorthand: a free text expander for your Mac</title>
+<meta name="description" content="Shorthand is a free, open source text expander for macOS. Type a short trigger like /sig anywhere and it instantly becomes your full signature, canned reply, or image. Rich formatting included.">
+<meta property="og:title" content="Shorthand: a free text expander for your Mac">
+<meta property="og:description" content="Type a little, paste a lot. Short triggers expand into rich text snippets, dates, and images in every app on your Mac. Free and open source.">
+<meta property="og:image" content="https://marcotteink.github.io/shorthand/icon.png">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+  :root {
+    --bg: #06101a;
+    --bg-2: #0a1826;
+    --card: rgba(255,255,255,0.045);
+    --card-border: rgba(255,255,255,0.09);
+    --text: #e8f1f7;
+    --muted: #92a5b8;
+    --accent: #0ea5e9;
+    --accent-2: #38bdf8;
+    --radius: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  .glow {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(600px 400px at 75% -50px, rgba(14,165,233,0.22), transparent 70%),
+      radial-gradient(700px 500px at 15% 30%, rgba(6,182,212,0.10), transparent 70%);
+  }
+  .wrap { position: relative; z-index: 1; max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: 0.2px; }
+  .brand img { width: 34px; height: 34px; border-radius: 8px; }
+  .nav-links { display: flex; align-items: center; gap: 18px; }
+  .nav-links a.gh { color: var(--muted); text-decoration: none; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+  .nav-links a.gh:hover { color: var(--text); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(180deg, var(--accent-2), var(--accent));
+    color: #fff; text-decoration: none; font-weight: 600; font-size: 15px;
+    padding: 11px 22px; border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(14,165,233,0.35);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(14,165,233,0.45); }
+  .btn.secondary {
+    background: var(--card); color: var(--text); box-shadow: none;
+    border: 1px solid var(--card-border);
+  }
+  .btn.small { padding: 8px 16px; font-size: 14px; }
+
+  header.hero { text-align: center; padding: 64px 0 24px; }
+  .hero h1 {
+    font-size: clamp(38px, 6vw, 64px); line-height: 1.08; font-weight: 800; letter-spacing: -1.5px;
+  }
+  .hero h1 span {
+    background: linear-gradient(90deg, var(--accent-2), #a5e3ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.sub { max-width: 640px; margin: 20px auto 0; color: var(--muted); font-size: 19px; }
+  .hero .cta { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .hero .meta { margin-top: 16px; color: var(--muted); font-size: 13px; }
+
+  /* ---- animated demo: typing /sig expands into a signature ---- */
+  .demo {
+    margin: 56px auto 0; max-width: 860px; height: 380px; position: relative;
+    background: linear-gradient(180deg, #0c1a2b, #091320);
+    border: 1px solid var(--card-border); border-radius: 20px; overflow: hidden;
+  }
+  .demo .menubar {
+    height: 28px; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: flex; align-items: center; padding: 0 14px; gap: 6px;
+  }
+  .demo .menubar .dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.14); }
+  .compose {
+    position: absolute; left: 50%; transform: translateX(-50%); top: 52px; width: 560px; max-width: 88%;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 14px; padding: 14px 20px 20px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  }
+  .compose .field {
+    font-size: 12.5px; color: var(--muted); padding: 8px 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .compose .field b { color: var(--text); font-weight: 600; }
+  .compose .bodyarea { padding: 14px 2px 4px; font-size: 14px; min-height: 150px; }
+  .compose .line1 { color: var(--text); margin-bottom: 18px; }
+
+  .typedwrap {
+    display: flex; align-items: center;
+    animation: wrapgone 8s linear infinite;
+  }
+  .typed {
+    display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 14px;
+    color: var(--accent-2); width: 0;
+    animation: type 8s steps(4, end) infinite;
+  }
+  .caret {
+    width: 2px; height: 18px; background: var(--accent-2); margin-left: 2px;
+    animation: blink 1s steps(1) infinite;
+  }
+  .sig { opacity: 0; animation: sigin 8s ease infinite; margin-top: -26px; }
+  .sig p { margin: 0 0 2px; color: var(--text); }
+  .sig .name { font-weight: 700; }
+  .sig .links { color: var(--accent-2); }
+  .sig .links span { text-decoration: underline; text-underline-offset: 3px; }
+
+  @keyframes type {
+    0%, 12%  { width: 0; }
+    34%, 100% { width: 4ch; }
+  }
+  @keyframes wrapgone {
+    0%, 45%  { opacity: 1; }
+    47%, 100% { opacity: 0; }
+  }
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+  @keyframes sigin {
+    0%, 46%  { opacity: 0; transform: translateY(8px); }
+    54%, 90% { opacity: 1; transform: none; }
+    97%, 100% { opacity: 0; }
+  }
+  .demo .caption {
+    position: absolute; bottom: 14px; left: 0; right: 0; text-align: center;
+    font-size: 13px; color: var(--muted);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .typed, .typedwrap, .caret, .sig { animation: none; }
+    .typedwrap { opacity: 0; }
+    .sig { opacity: 1; }
+  }
+
+  section { padding: 72px 0 0; }
+  .kicker { color: var(--accent-2); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; }
+  h2 { font-size: clamp(26px, 4vw, 36px); font-weight: 800; letter-spacing: -0.8px; margin-top: 8px; }
+  .lede { color: var(--muted); max-width: 640px; margin-top: 10px; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 36px; }
+  .step {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius);
+    padding: 26px 22px;
+  }
+  .step .num {
+    width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, var(--accent-2), var(--accent)); font-weight: 800; font-size: 15px;
+    margin-bottom: 14px;
+  }
+  .step h3 { font-size: 17px; margin-bottom: 6px; }
+  .step p { color: var(--muted); font-size: 14.5px; }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 36px; }
+  .feature {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius);
+    padding: 22px 20px; transition: border-color .2s ease, transform .2s ease;
+  }
+  .feature:hover { border-color: rgba(56,189,248,0.45); transform: translateY(-2px); }
+  .feature .ico { font-size: 22px; margin-bottom: 10px; display: block; }
+  .feature h3 { font-size: 15px; margin-bottom: 5px; }
+  .feature p { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+
+  /* ---- command center ---- */
+  .menuwrap { display: grid; grid-template-columns: 380px 1fr; gap: 40px; align-items: start; margin-top: 36px; }
+  .menucol { position: sticky; top: 24px; }
+  .ccmock {
+    background: rgba(30,36,46,0.96); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 30px 70px rgba(0,0,0,0.55); font-size: 12px;
+  }
+  .ccmock .titlebar {
+    height: 26px; background: rgba(255,255,255,0.06); display: flex; align-items: center;
+    padding: 0 10px; gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .ccmock .titlebar .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.16); }
+  .ccmock .body { display: grid; grid-template-columns: 130px 1fr; }
+  .ccside { border-right: 1px solid rgba(255,255,255,0.08); padding: 8px 6px; }
+  .ccsearch {
+    background: rgba(255,255,255,0.07); border-radius: 6px; padding: 4px 8px;
+    color: var(--muted); font-size: 10.5px; margin-bottom: 8px;
+  }
+  .ccrow {
+    display: flex; justify-content: space-between; align-items: center; gap: 4px;
+    padding: 5px 7px; border-radius: 6px; color: var(--text); margin-bottom: 2px;
+  }
+  .ccrow.active { background: rgba(56,189,248,0.18); box-shadow: inset 0 0 0 1px rgba(56,189,248,0.35); }
+  .ccrow .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .ccrow .pill {
+    background: rgba(255,255,255,0.10); border-radius: 7px; padding: 1px 6px;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 9.5px; color: var(--muted);
+    flex-shrink: 0;
+  }
+  .ccmain { padding: 10px; }
+  .ccstatus { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); margin-bottom: 8px; }
+  .ccstatus .lite { width: 7px; height: 7px; border-radius: 50%; background: #34d399; }
+  .ccboxes { display: flex; gap: 6px; margin-bottom: 8px; }
+  .ccbox {
+    flex: 1; border: 1px solid rgba(255,255,255,0.13); border-radius: 7px; padding: 5px 8px;
+  }
+  .ccbox small { display: block; font-size: 8px; color: var(--muted); }
+  .ccbox span { font-size: 11px; }
+  .ccbox.mono span { font-family: "SF Mono", ui-monospace, Menlo, monospace; color: var(--accent-2); }
+  .cctools {
+    display: flex; gap: 7px; align-items: center; margin-bottom: 8px;
+    color: var(--muted); font-size: 11px;
+  }
+  .cctools b { color: var(--text); }
+  .cctools i { font-style: italic; }
+  .cctools u { text-decoration: underline; }
+  .cctools .tld { width: 1px; height: 12px; background: rgba(255,255,255,0.15); }
+  .ccedit {
+    border: 1px solid rgba(255,255,255,0.13); border-radius: 8px; min-height: 92px;
+    background: #f4f7fa; color: #1a2530; padding: 10px 12px; font-size: 12px; line-height: 1.55;
+  }
+  .ccedit .nm { font-weight: 700; }
+  .ccedit .lk { color: #0b74d1; text-decoration: underline; }
+  .ccedit .tok { background: rgba(14,165,233,0.14); border-radius: 4px; padding: 0 3px; color: #0b74d1; font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 10.5px; }
+
+  .menuexplain { display: flex; flex-direction: column; gap: 14px; }
+  .mrow {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 14px;
+    padding: 18px 20px; display: flex; gap: 16px; align-items: flex-start;
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .mrow:hover { border-color: rgba(56,189,248,0.45); transform: translateY(-2px); }
+  .mrow .mi-ico {
+    font-size: 20px; flex-shrink: 0; width: 40px; height: 40px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(56,189,248,0.14); border: 1px solid rgba(56,189,248,0.25);
+  }
+  .mrow h3 { font-size: 15.5px; margin-bottom: 3px; }
+  .mrow h3 .tag {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--accent-2); background: rgba(56,189,248,0.14); border-radius: 5px;
+    padding: 2px 7px; margin-left: 8px; vertical-align: middle;
+  }
+  .mrow p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+  .install {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 20px;
+    padding: 36px; margin-top: 36px;
+  }
+  .install ol { margin: 18px 0 0 20px; }
+  .install li { margin-bottom: 14px; color: var(--text); }
+  .install li span { color: var(--muted); display: block; font-size: 14px; }
+  .callout {
+    margin-top: 22px; border-left: 3px solid var(--accent);
+    background: rgba(14,165,233,0.08); border-radius: 0 12px 12px 0;
+    padding: 16px 18px; font-size: 14.5px; color: var(--muted);
+  }
+  .callout strong { color: var(--text); }
+  code {
+    background: rgba(255,255,255,0.08); border: 1px solid var(--card-border);
+    padding: 2px 7px; border-radius: 6px; font-size: 13px;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 30px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--card-border); }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  td:last-child { color: var(--muted); }
+  td code { white-space: nowrap; }
+
+  .installgrid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 26px; align-items: start; margin-top: 8px; }
+  .cmdblock {
+    background: #091320; border: 1px solid var(--card-border); border-radius: 12px;
+    padding: 16px 18px; margin-top: 14px; overflow-x: auto;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12.5px;
+    color: #9fdcff; white-space: pre; line-height: 1.7;
+  }
+  .gatemock {
+    background: #1c1c1e; border: 1px solid rgba(255,255,255,0.12); border-radius: 22px;
+    padding: 26px 22px 20px; max-width: 300px; margin: 14px auto 0; text-align: center;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5); position: relative;
+  }
+  .gatemock .house {
+    width: 52px; height: 52px; margin: 0 auto 14px; position: relative;
+    background: rgba(255,255,255,0.14); border-radius: 12px;
+    display: flex; align-items: center; justify-content: center; font-size: 26px;
+  }
+  .gatemock .house::after {
+    content: "\26A0"; position: absolute; bottom: -6px; right: -8px; font-size: 18px;
+    color: #f7c948;
+  }
+  .gatemock h4 { font-size: 14px; margin-bottom: 8px; }
+  .gatemock p { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 16px; }
+  .gatemock .b { border-radius: 999px; padding: 8px 0; font-size: 13px; font-weight: 600; margin-top: 10px; }
+  .gatemock .b.trash { background: #2f7cf6; color: #fff; }
+  .gatemock .b.done { background: rgba(255,255,255,0.12); color: var(--text); }
+  .gatemock .hint { font-size: 11px; font-weight: 600; margin-top: 5px; }
+  .gatemock .hint.no { color: #f38a8a; }
+  .gatemock .hint.yes { color: #7fd8a5; }
+  .mockcol { display: flex; flex-direction: column; gap: 8px; }
+  .mockcap {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 1.2px; text-align: center; margin-top: 16px; font-weight: 700;
+  }
+  .setmock {
+    background: #232327; border: 1px solid rgba(255,255,255,0.12); border-radius: 14px;
+    padding: 16px 16px 14px; font-size: 12.5px; max-width: 320px; margin: 8px auto 0;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  }
+  .setmock .sect { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .setmock .row {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 12px;
+  }
+  .setmock .row:last-of-type { border-bottom: none; }
+  .setmock .pill {
+    background: rgba(255,255,255,0.14); border-radius: 7px; padding: 4px 10px;
+    font-size: 11.5px; white-space: nowrap; flex-shrink: 0;
+  }
+  .setmock .note { color: var(--muted); font-size: 10.5px; margin-top: 6px; line-height: 1.5; }
+  .tog {
+    width: 34px; height: 20px; border-radius: 999px; background: #34c759; position: relative; flex-shrink: 0;
+  }
+  .tog::after {
+    content: ""; position: absolute; top: 2px; right: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff;
+  }
+  .appline { display: flex; align-items: center; gap: 8px; }
+  .appline .mini {
+    width: 20px; height: 20px; border-radius: 5px;
+    background: linear-gradient(180deg, #38bdf8, #0b5ed7);
+    display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff;
+  }
+  @media (max-width: 860px) {
+    .installgrid { grid-template-columns: 1fr; }
+  }
+  details {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 12px;
+    padding: 16px 20px; margin-top: 12px;
+  }
+  details summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+  details p { color: var(--muted); font-size: 14.5px; margin-top: 10px; }
+
+  .crosspromo {
+    margin-top: 88px; background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 20px; padding: 28px 32px; display: flex; align-items: center; gap: 20px;
+    flex-wrap: wrap;
+  }
+  .crosspromo img { width: 52px; height: 52px; border-radius: 12px; }
+  .crosspromo .txt { flex: 1; min-width: 240px; }
+  .crosspromo h3 { font-size: 17px; }
+  .crosspromo p { color: var(--muted); font-size: 14px; }
+
+  .bottom-cta { text-align: center; padding: 88px 0 40px; }
+  .bottom-cta h2 { margin-bottom: 18px; }
+
+  footer {
+    border-top: 1px solid var(--card-border); margin-top: 40px;
+    padding: 28px 0 40px; display: flex; justify-content: space-between; align-items: center;
+    color: var(--muted); font-size: 13.5px; flex-wrap: wrap; gap: 10px;
+  }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--text); }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .steps { grid-template-columns: 1fr; }
+    .menuwrap { grid-template-columns: 1fr; gap: 24px; }
+    .menucol { position: static; max-width: 380px; }
+  }
+  @media (max-width: 540px) {
+    .grid { grid-template-columns: 1fr; }
+    footer { flex-direction: column; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<div class="wrap">
+
+  <nav>
+    <div class="brand"><img src="icon.png" alt="Shorthand icon"> Shorthand</div>
+    <div class="nav-links">
+      <a class="gh" href="https://marcotteink.github.io/ledge/">Ledge</a>
+      <a class="gh" href="https://github.com/marcotteink/shorthand">
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        Source
+      </a>
+      <a class="btn small" href="https://github.com/marcotteink/shorthand/releases/latest/download/Shorthand.zip">Download</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <h1>Type a little.<br><span>Paste a lot.</span></h1>
+    <p class="sub">Shorthand is a free text expander for macOS. Type a short trigger like <code>/sig</code> anywhere, and it instantly becomes your full signature, canned reply, or image. Rich formatting included, in every app on your Mac.</p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/marcotteink/shorthand/releases/latest/download/Shorthand.zip">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12L3 7h3V1h4v6h3L8 12zm-6 2h12v2H2v-2z"/></svg>
+        Download for Mac
+      </a>
+      <a class="btn secondary" href="https://github.com/marcotteink/shorthand">View on GitHub</a>
+    </div>
+    <p class="meta">Free forever. Open source. macOS 13 or later, Apple Silicon and Intel. About 0.5 MB.</p>
+  </header>
+
+  <div class="demo" aria-hidden="true">
+    <div class="menubar"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    <div class="compose">
+      <div class="field">To: <b>sarah@customer.com</b></div>
+      <div class="field">Subject: <b>Your quote is ready</b></div>
+      <div class="bodyarea">
+        <p class="line1">Quote #3417 is attached. Let me know if you'd like any changes.</p>
+        <div class="typedwrap"><span class="typed">/sig</span><span class="caret"></span></div>
+        <div class="sig">
+          <p>Best,</p>
+          <p class="name">Matt Marcotte</p>
+          <p class="links"><span>marcotte.ink</span> &middot; <span>matt@marcotte.ink</span></p>
+        </div>
+      </div>
+    </div>
+    <div class="caption">Type the shortcut. Get the whole thing, formatting and all. In Mail, Slack, Chrome, anywhere.</div>
+  </div>
+
+  <section id="how">
+    <p class="kicker">How it works</p>
+    <h2>Three moves. That's the whole app.</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h3>Make a snippet</h3>
+        <p>Open the command center, type what you want to reuse, style it with the toolbar. Give it a short trigger like /sig or /addr. No code, no HTML.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h3>Type the trigger anywhere</h3>
+        <p>Email, chat, browser, notes, CRM. If you can type in it, Shorthand is watching for your shortcuts there.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h3>Watch it expand</h3>
+        <p>The trigger deletes itself and your full snippet lands in its place, bold text, links, images and all. Your clipboard is restored right after.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <p class="kicker">Features</p>
+    <h2>Everything the paid expanders do. Free.</h2>
+    <div class="grid">
+      <div class="feature"><span class="ico">&#127758;</span><h3>Works in every app</h3><p>Not a browser extension. Shorthand expands in Mail, Slack, Safari, Chrome, Notes, your CRM, anywhere you can type.</p></div>
+      <div class="feature"><span class="ico">&#10024;</span><h3>Rich text, no HTML</h3><p>Bold, colors, highlights, lists, headings, links. Style snippets in a real editor and they paste with formatting intact.</p></div>
+      <div class="feature"><span class="ico">&#128444;</span><h3>Images too</h3><p>Paste or drag PNG, JPG, or GIF into a snippet. A /logo shortcut can drop your actual logo into an email or chat.</p></div>
+      <div class="feature"><span class="ico">&#128197;</span><h3>Fill-ins that think</h3><p>{date}, {time}, {clipboard}, and {cursor} fill themselves in at expansion time. Dates support any format you want.</p></div>
+      <div class="feature"><span class="ico">&#127919;</span><h3>Visual command center</h3><p>Searchable snippet list, live preview, and a Try It Out box so you can test a shortcut before you rely on it.</p></div>
+      <div class="feature"><span class="ico">&#9888;&#65039;</span><h3>Conflict warnings</h3><p>If one shortcut would block another, Shorthand flags it right in the sidebar before it bites you.</p></div>
+      <div class="feature"><span class="ico">&#128274;</span><h3>Private by design</h3><p>No account, no network calls, no analytics. Snippets live in a local file. Password fields are invisible to it, by macOS design.</p></div>
+      <div class="feature"><span class="ico">&#128150;</span><h3>Free and open source</h3><p>MIT licensed. Read every line of code, build it yourself, or grab the download. No trial, no subscription, no upsell.</p></div>
+    </div>
+  </section>
+
+  <section id="center">
+    <p class="kicker">The command center</p>
+    <h2>A real editor, not a config file.</h2>
+    <p class="lede">Click the bolt in your menu bar and the command center opens: your snippets on the left, a full rich text editor on the right. Here's what you're looking at.</p>
+
+    <div class="menuwrap">
+      <div class="menucol" aria-hidden="true">
+        <div class="ccmock">
+          <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+          <div class="body">
+            <div class="ccside">
+              <div class="ccsearch">&#128269; Search snippets</div>
+              <div class="ccrow active"><span class="name">Email signature</span><span class="pill">/sig</span></div>
+              <div class="ccrow"><span class="name">Customer notes</span><span class="pill">/cn</span></div>
+              <div class="ccrow"><span class="name">Thank you reply</span><span class="pill">/ty</span></div>
+              <div class="ccrow"><span class="name">Today's date</span><span class="pill">/date</span></div>
+              <div class="ccrow"><span class="name">Zoom link</span><span class="pill">/zm</span></div>
+            </div>
+            <div class="ccmain">
+              <div class="ccstatus"><span class="lite"></span> Expanding. Type a shortcut in any app.</div>
+              <div class="ccboxes">
+                <div class="ccbox"><small>Label</small><span>Email signature</span></div>
+                <div class="ccbox mono"><small>Shortcut</small><span>/sig</span></div>
+              </div>
+              <div class="cctools"><b>B</b><i>I</i><u>U</u><span class="tld"></span>&#128279; &#128444; A&#65039;&#8419;<span class="tld"></span>&#8226; 1.<span class="tld"></span>&#128515;</div>
+              <div class="ccedit">
+                Best,<br>
+                <span class="nm">Matt Marcotte</span><br>
+                <span class="lk">marcotte.ink</span> &middot; <span class="lk">matt@marcotte.ink</span><br>
+                <span class="tok">{date}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menuexplain">
+        <div class="mrow">
+          <div class="mi-ico">&#9997;&#65039;</div>
+          <div>
+            <h3>What you see is what pastes <span class="tag">wysiwyg</span></h3>
+            <p>Style snippets with a toolbar: bold, italics, colors, highlights, bulleted and numbered lists, headings, alignment. The snippet expands exactly the way it looks in the editor. Never touch a tag.</p>
+          </div>
+        </div>
+        <div class="mrow">
+          <div class="mi-ico">&#128279;</div>
+          <div>
+            <h3>Links and images</h3>
+            <p>Select text, click the link button, paste an address. Done. Drag in a PNG, JPG, or GIF and it expands right along with your text, or on its own as an image-only snippet.</p>
+          </div>
+        </div>
+        <div class="mrow">
+          <div class="mi-ico">&#128197;</div>
+          <div>
+            <h3>Dynamic commands</h3>
+            <p>Click a command in the side panel to drop it into your snippet: today's date, a custom-formatted date, the current time, your clipboard contents, or a cursor marker that decides where you land after expanding.</p>
+          </div>
+        </div>
+        <div class="mrow">
+          <div class="mi-ico">&#128065;&#65039;</div>
+          <div>
+            <h3>Preview and Try It Out</h3>
+            <p>Flip to Preview to see the snippet with every placeholder filled in with real values. Then type your shortcut in the Try It Out box and watch the actual expansion happen before you trust it in a customer email.</p>
+          </div>
+        </div>
+        <div class="mrow">
+          <div class="mi-ico">&#9888;&#65039;</div>
+          <div>
+            <h3>Conflict warnings</h3>
+            <p>If /64 would fire before you could ever finish typing /6400, Shorthand tells you right in the sidebar, the moment it happens. Duplicates get flagged too.</p>
+          </div>
+        </div>
+        <div class="mrow">
+          <div class="mi-ico">&#9889;</div>
+          <div>
+            <h3>The menu bar bolt</h3>
+            <p>Pause and resume expansion with one switch, copy any snippet to the clipboard, start at login, or pop the command center. The green dot always tells you Shorthand is on the job.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <p class="kicker">Install</p>
+    <h2>Up and running in two minutes.</h2>
+    <p class="lede">Shorthand is free and open source, not notarized through Apple's paid developer program. That means macOS shows a scary-looking warning on first launch, and the app needs one permission to do its job. Both take seconds.</p>
+
+    <div class="install">
+      <h3 style="font-size:18px;">Option 1: Terminal install, no warnings at all</h3>
+      <p style="color:var(--muted); font-size:14.5px; margin-top:6px;">Paste this one line into Terminal (find it in Applications &gt; Utilities). It downloads Shorthand, puts it in Applications, clears the safety flag, and launches it.</p>
+      <div class="cmdblock">curl -fsSL -o /tmp/Shorthand.zip https://github.com/marcotteink/shorthand/releases/latest/download/Shorthand.zip &amp;&amp; ditto -xk /tmp/Shorthand.zip /Applications &amp;&amp; xattr -dr com.apple.quarantine /Applications/Shorthand.app &amp;&amp; open /Applications/Shorthand.app</div>
+    </div>
+
+    <div class="install" style="margin-top:18px;">
+      <h3 style="font-size:18px;">Option 2: Download normally, then approve it once</h3>
+      <div class="installgrid">
+        <ol>
+          <li><strong>Download and unzip.</strong>
+            <span>Grab <a href="https://github.com/marcotteink/shorthand/releases/latest/download/Shorthand.zip" style="color:var(--accent-2)">Shorthand.zip</a> and double-click it. You get Shorthand.app.</span></li>
+          <li><strong>Drag Shorthand.app into Applications.</strong></li>
+          <li><strong>Open it. You'll see the warning shown here.</strong>
+            <span>Click <strong style="color:var(--text)">Done</strong>. Not "Move to Trash". This is macOS being cautious about any app that isn't in its paid developer registry, not a malware detection.</span></li>
+          <li><strong>Approve it in System Settings.</strong>
+            <span>Open System Settings, go to Privacy &amp; Security, scroll to the bottom Security section, and click <strong style="color:var(--text)">Open Anyway</strong>, then confirm.</span></li>
+          <li><strong>Done with part one.</strong>
+            <span>Look for the bolt icon in your menu bar. One more step below and you're expanding.</span></li>
+        </ol>
+        <div class="mockcol" aria-hidden="true">
+          <div>
+            <div class="mockcap">Step 3: what you'll see</div>
+            <div class="gatemock">
+              <div class="house">&#127968;</div>
+              <h4>"Shorthand" Not Opened</h4>
+              <p>Apple could not verify "Shorthand" is free of malware that may harm your Mac or compromise your privacy.</p>
+              <div class="b trash">Move to Trash</div>
+              <div class="hint no">&#10005; do not click this</div>
+              <div class="b done">Done</div>
+              <div class="hint yes">&#10003; click Done, then do step 4</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="install" style="margin-top:18px;">
+      <h3 style="font-size:18px;">Last step for everyone: allow Accessibility</h3>
+      <div class="installgrid">
+        <div>
+          <p style="color:var(--muted); font-size:14.5px; margin-top:6px;">A text expander has to see what you type (to spot your shortcuts) and type for you (to expand them). On a Mac, both live behind one switch: Accessibility. Shorthand asks the first time it runs.</p>
+          <ol>
+            <li><strong>Shorthand prompts you on first launch.</strong>
+              <span>Click "Open System Settings" in the prompt, or go to System Settings &gt; Privacy &amp; Security &gt; Accessibility yourself.</span></li>
+            <li><strong>Turn on the Shorthand toggle.</strong>
+              <span>If it's not in the list, click + and pick Shorthand from Applications.</span></li>
+            <li><strong>That's it. No restart needed.</strong>
+              <span>The dot in the command center turns green within a couple of seconds, and your shortcuts are live everywhere. Test one in the Try It Out box.</span></li>
+          </ol>
+        </div>
+        <div class="mockcol" aria-hidden="true">
+          <div>
+            <div class="mockcap">Where the switch lives</div>
+            <div class="setmock">
+              <div class="sect">Accessibility</div>
+              <div class="note" style="margin-bottom:6px;">Allow the applications below to control your computer.</div>
+              <div class="row">
+                <span class="appline"><span class="mini">&#9889;</span> Shorthand</span>
+                <span class="tog"></span>
+              </div>
+              <div class="note">Privacy &amp; Security &gt; Accessibility</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>What Shorthand does with that access, and what it doesn't.</strong> It watches the last few dozen characters you type, locally, only to match them against your shortcuts, and it never writes anything anywhere or phones home. There is no network code in the app at all. Passwords are protected by macOS itself: secure input fields are invisible to Shorthand by design. And you don't have to take anyone's word for it, the full source is on <a href="https://github.com/marcotteink/shorthand" style="color:var(--accent-2)">GitHub</a>: read it, or build it yourself with <code>./build.sh</code>.
+      </div>
+    </div>
+  </section>
+
+  <section id="use">
+    <p class="kicker">Cheat sheet</p>
+    <h2>Everything Shorthand responds to.</h2>
+    <table>
+      <tr><th>You do this</th><th>Shorthand does this</th></tr>
+      <tr><td>Type a shortcut, like <code>/sig</code></td><td>Deletes the shortcut and pastes the full snippet in its place</td></tr>
+      <tr><td>Put <code>{date}</code> in a snippet</td><td>Expands as today's date, written out (July 3, 2026)</td></tr>
+      <tr><td>Put <code>{date:MM/dd/yy}</code> in a snippet</td><td>Date in any format you specify (07/03/26)</td></tr>
+      <tr><td>Put <code>{time}</code> in a snippet</td><td>The current time (2:41 PM)</td></tr>
+      <tr><td>Put <code>{clipboard}</code> in a snippet</td><td>Whatever you most recently copied, dropped right in</td></tr>
+      <tr><td>Put <code>{cursor}</code> in a snippet</td><td>Your cursor lands exactly there after expansion</td></tr>
+      <tr><td>Paste or drag an image into the editor</td><td>The image expands with the snippet, even into Gmail or Slack</td></tr>
+      <tr><td>Click the menu bar bolt</td><td>Command center, pause switch, copy a snippet, start at login</td></tr>
+      <tr><td>Type in a password field</td><td>Nothing. Secure fields are invisible to Shorthand, by macOS design</td></tr>
+    </table>
+  </section>
+
+  <section id="faq">
+    <p class="kicker">FAQ</p>
+    <h2>Questions people ask.</h2>
+    <details>
+      <summary>Is it really free?</summary>
+      <p>Yes. Free forever, MIT licensed, no trial, no locked features, no account. It was built to replace a paid subscription tool and is shared in that same spirit.</p>
+    </details>
+    <details>
+      <summary>Why does it need Accessibility permission?</summary>
+      <p>Text expansion is, mechanically, two things: noticing that you typed a shortcut, and typing the replacement for you. macOS gates both behind the Accessibility permission. That's the whole reason. Shorthand asks once on first launch, and the command center shows a green dot when everything is working.</p>
+    </details>
+    <details>
+      <summary>So it can see what I type. Should I be worried?</summary>
+      <p>Fair question, and worth asking of any expander. Shorthand keeps a rolling buffer of only the last few dozen keystrokes, in memory, purely to match against your shortcuts. It writes nothing to disk except your own snippets, contains zero networking code, and shows no analytics or telemetry. Password fields use macOS secure input, which hides typing from every app, Shorthand included. The entire source is public on GitHub, so you can verify all of this yourself rather than trust a privacy policy.</p>
+    </details>
+    <details>
+      <summary>macOS says it "could not verify" Shorthand. Is that bad?</summary>
+      <p>It's normal and expected for free apps. Apple shows that message for any app whose developer doesn't pay for the $99/year Apple Developer Program, and since Shorthand is free, that fee isn't happening. Nothing harmful was detected; Apple simply doesn't have the developer in its paid registry. Click Done in the warning, then System Settings, Privacy &amp; Security, scroll to the bottom, Open Anyway. You do this exactly once. The Terminal install option skips the warning entirely.</p>
+    </details>
+    <details>
+      <summary>Where do my snippets live?</summary>
+      <p>In a single local file: ~/Library/Application Support/Shorthand/snippets.json. It's yours: back it up, sync it, edit it by hand if you like. The command center reads and writes the same file, and picks up outside edits instantly. Nothing ever leaves your Mac.</p>
+    </details>
+    <details>
+      <summary>Does it work in every app?</summary>
+      <p>Anywhere you can type, with one sensible caveat: apps that only accept plain text get the plain text version of your snippet automatically. Rich formatting lands wherever rich text is accepted: Mail, Notes, Slack, Gmail and most web editors, Word, and so on.</p>
+    </details>
+    <details>
+      <summary>What happens to my clipboard?</summary>
+      <p>Expansion works by briefly placing your snippet on the clipboard and pasting it. Whatever you had copied before is put back about a second later, automatically.</p>
+    </details>
+    <details>
+      <summary>Can I pause it?</summary>
+      <p>One switch, two places: the toggle at the top of the command center, or Pause Expansion in the menu bar bolt menu. Shortcuts stop expanding instantly and start again just as fast.</p>
+    </details>
+    <details>
+      <summary>How do I uninstall?</summary>
+      <p>Quit Shorthand from its menu bar icon, delete Shorthand.app from Applications, and remove the ~/Library/Application Support/Shorthand folder. You can also remove it from the Accessibility list in System Settings. That's everything.</p>
+    </details>
+    <details>
+      <summary>Can I build it from source?</summary>
+      <p>Yes. Clone the repo, run ./build.sh, and it builds and installs Shorthand.app for you. You need the Xcode Command Line Tools, nothing else. The whole app is a small Swift package.</p>
+    </details>
+  </section>
+
+  <a class="crosspromo" href="https://marcotteink.github.io/ledge/" style="text-decoration:none; color:inherit;">
+    <img src="https://marcotteink.github.io/ledge/icon.png" alt="Ledge icon">
+    <div class="txt">
+      <h3>Like free Mac tools? Meet Ledge.</h3>
+      <p>A drag-and-drop shelf for your files. Start dragging and a shelf appears; park things, then drag them out where they belong. Same shop, same deal: free and open source.</p>
+    </div>
+    <span class="btn secondary small">Check out Ledge</span>
+  </a>
+
+  <div class="bottom-cta">
+    <h2>Stop typing the same thing twice.</h2>
+    <a class="btn" href="https://github.com/marcotteink/shorthand/releases/latest/download/Shorthand.zip">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12L3 7h3V1h4v6h3L8 12zm-6 2h12v2H2v-2z"/></svg>
+      Download Shorthand, free
+    </a>
+    <p style="color:var(--muted); font-size:13px; margin-top:14px;">macOS 13 or later. Universal for Apple Silicon and Intel.</p>
+  </div>
+
+  <footer>
+    <div>Made by <a href="https://marcotte.ink">Matt Marcotte</a>. MIT licensed.</div>
+    <div><a href="https://github.com/marcotteink/shorthand">GitHub</a> &nbsp;&middot;&nbsp; <a href="https://github.com/marcotteink/shorthand/issues">Report an issue</a> &nbsp;&middot;&nbsp; <a href="https://marcotteink.github.io/ledge/">Ledge</a></div>
+  </footer>
+
+</div>
+</body>
+</html>

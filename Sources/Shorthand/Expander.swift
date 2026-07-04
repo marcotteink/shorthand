@@ -31,6 +31,12 @@ final class Expander {
         writePasteboard(rendered)
     }
 
+    /// Paste a snippet at the current cursor with no trigger to delete.
+    /// Used by the quick picker, where the target app must already be frontmost.
+    func insert(_ snippet: Snippet) {
+        pasteRendered(snippet)
+    }
+
     // MARK: - Key synthesis
 
     private func post(keyCode: CGKeyCode, flags: CGEventFlags = []) {

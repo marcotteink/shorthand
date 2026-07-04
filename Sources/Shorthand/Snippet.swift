@@ -94,6 +94,20 @@ final class SnippetStore {
     func save(_ newSnippets: [Snippet]) {
         var cleaned = newSnippets
         cleaned.removeAll { $0.trigger.isEmpty }
+
+        // Guard against accidental data loss: if a snippet that had content is
+        // about to be emptied, or one is disappearing, snapshot the current file
+        // first so it can be recovered. Normal edits never trigger this.
+        let losesBody = snippets.contains { old in
+            !old.body.isEmpty && cleaned.contains { $0.trigger == old.trigger && $0.body.isEmpty }
+        }
+        let losesSnippet = snippets.contains { old in
+            !cleaned.contains { $0.trigger == old.trigger }
+        }
+        if losesBody || losesSnippet {
+            backupCurrentFile()
+        }
+
         snippets = cleaned
         matchOrder = cleaned.sorted { $0.trigger.count > $1.trigger.count }
         lastError = nil
@@ -103,6 +117,26 @@ final class SnippetStore {
             try? data.write(to: Self.fileURL, options: .atomic)
         }
         onChange?()
+    }
+
+    static let backupsURL = dirURL.appendingPathComponent("Backups", isDirectory: true)
+
+    /// Rotate the last five copies of snippets.json into a Backups folder.
+    private func backupCurrentFile() {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: Self.fileURL.path) else { return }
+        try? fm.createDirectory(at: Self.backupsURL, withIntermediateDirectories: true)
+        for i in stride(from: 4, through: 1, by: -1) {
+            let src = Self.backupsURL.appendingPathComponent("snippets-\(i).json")
+            let dst = Self.backupsURL.appendingPathComponent("snippets-\(i + 1).json")
+            if fm.fileExists(atPath: src.path) {
+                try? fm.removeItem(at: dst)
+                try? fm.copyItem(at: src, to: dst)
+            }
+        }
+        let newest = Self.backupsURL.appendingPathComponent("snippets-1.json")
+        try? fm.removeItem(at: newest)
+        try? fm.copyItem(at: Self.fileURL, to: newest)
     }
 
     func match(bufferEndingWith buffer: String) -> Snippet? {

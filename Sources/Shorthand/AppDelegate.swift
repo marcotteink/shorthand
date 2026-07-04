@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let expander = Expander()
     private var permissionTimer: Timer?
     private var editor: EditorWindowController?
+    private var picker: PickerWindowController?
+    private let pickerHotKey = HotKey()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -24,7 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         store.onChange = { [weak self] in
             self?.editor?.storeDidChange()
+            self?.picker?.storeDidChange()
         }
+
+        // Global hotkey to summon the snippet picker from any app: Control-Option-S
+        pickerHotKey.onFire = { [weak self] in
+            self?.snippetPicker().toggle()
+        }
+        pickerHotKey.register(keyCode: 1, modifiers: HotKey.Modifiers.control | HotKey.Modifiers.option)
 
         setupMainMenu()
         ensurePermissionAndStart()
@@ -48,6 +57,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let editor { return editor }
         let controller = EditorWindowController(store: store, monitor: monitor)
         editor = controller
+        return controller
+    }
+
+    private func snippetPicker() -> PickerWindowController {
+        if let picker { return picker }
+        let controller = PickerWindowController(store: store, expander: expander)
+        controller.onEditRequested = { [weak self] in self?.commandCenter().show() }
+        picker = controller
         return controller
     }
 
@@ -116,6 +133,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+
+        let picker = NSMenuItem(title: "Show Snippet Picker", action: #selector(showPicker), keyEquivalent: "s")
+        picker.keyEquivalentModifierMask = [.control, .option]
+        picker.target = self
+        menu.addItem(picker)
 
         let center = NSMenuItem(title: "Open Command Center", action: #selector(openCommandCenter), keyEquivalent: "o")
         center.target = self
@@ -195,6 +217,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openCommandCenter() {
         commandCenter().show()
+    }
+
+    @objc private func showPicker() {
+        snippetPicker().show()
     }
 
     @objc private func toggleEnabled() {

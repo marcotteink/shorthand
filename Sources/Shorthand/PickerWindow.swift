@@ -13,7 +13,9 @@ final class PickerWindowController: NSObject, NSWindowDelegate,
     private var panel: NSPanel!
     private let searchField = NSSearchField()
     private let tableView = NSTableView()
-    private let previewLabel = NSTextField(wrappingLabelWithString: "")
+    private let previewView = NSTextView()
+    private var previewScroll = NSScrollView()
+    private let previewCaption = NSTextField(labelWithString: "Preview")
     private let insertButton = NSButton(title: "Insert", target: nil, action: nil)
     private let keepOpenCheck = NSButton(checkboxWithTitle: "Keep open", target: nil, action: nil)
     private let emptyLabel = NSTextField(labelWithString: "No snippets match.")
@@ -62,7 +64,7 @@ final class PickerWindowController: NSObject, NSWindowDelegate,
 
     private func buildPanel() {
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 440),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 580),
             styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .utilityWindow],
             backing: .buffered, defer: false
         )
@@ -73,7 +75,7 @@ final class PickerWindowController: NSObject, NSWindowDelegate,
         panel.becomesKeyOnlyIfNeeded = false
         panel.worksWhenModal = true
         panel.isMovableByWindowBackground = false
-        panel.minSize = NSSize(width: 250, height: 320)
+        panel.minSize = NSSize(width: 300, height: 420)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.setFrameAutosaveName("ShorthandPicker")
         panel.delegate = self
@@ -111,12 +113,48 @@ final class PickerWindowController: NSObject, NSWindowDelegate,
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(emptyLabel)
 
-        previewLabel.font = .systemFont(ofSize: 11)
-        previewLabel.textColor = .secondaryLabelColor
-        previewLabel.maximumNumberOfLines = 3
-        previewLabel.lineBreakMode = .byTruncatingTail
-        previewLabel.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(previewLabel)
+        previewCaption.font = .systemFont(ofSize: 10, weight: .semibold)
+        previewCaption.textColor = .tertiaryLabelColor
+        previewCaption.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(previewCaption)
+
+        // Read-only rich preview so long, formatted macros are actually legible.
+        previewView.isEditable = false
+        previewView.isSelectable = true
+        previewView.drawsBackground = false
+        previewView.textContainerInset = NSSize(width: 8, height: 8)
+        previewView.minSize = .zero
+        previewView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        previewView.isVerticallyResizable = true
+        previewView.isHorizontallyResizable = false
+        previewView.autoresizingMask = [.width]
+        previewView.textContainer?.widthTracksTextView = true
+
+        previewScroll = NSScrollView()
+        previewScroll.documentView = previewView
+        previewScroll.hasVerticalScroller = true
+        previewScroll.borderType = .noBorder
+        previewScroll.drawsBackground = false
+        previewScroll.translatesAutoresizingMaskIntoConstraints = false
+
+        // Light card so snippet colors and highlights read true, like the editor.
+        let previewFrame = NSView()
+        previewFrame.appearance = NSAppearance(named: .aqua)
+        previewFrame.wantsLayer = true
+        previewFrame.layer?.backgroundColor = NSColor.white.cgColor
+        previewFrame.layer?.borderWidth = 1
+        previewFrame.layer?.borderColor = NSColor.separatorColor.cgColor
+        previewFrame.layer?.cornerRadius = 8
+        previewFrame.layer?.masksToBounds = true
+        previewFrame.translatesAutoresizingMaskIntoConstraints = false
+        previewFrame.addSubview(previewScroll)
+        content.addSubview(previewFrame)
+        NSLayoutConstraint.activate([
+            previewScroll.leadingAnchor.constraint(equalTo: previewFrame.leadingAnchor),
+            previewScroll.trailingAnchor.constraint(equalTo: previewFrame.trailingAnchor),
+            previewScroll.topAnchor.constraint(equalTo: previewFrame.topAnchor),
+            previewScroll.bottomAnchor.constraint(equalTo: previewFrame.bottomAnchor)
+        ])
 
         let separator = NSBox()
         separator.boxType = .separator
@@ -153,12 +191,15 @@ final class PickerWindowController: NSObject, NSWindowDelegate,
             emptyLabel.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
 
-            previewLabel.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
-            previewLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            previewLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            previewLabel.heightAnchor.constraint(equalToConstant: 44),
+            previewCaption.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
+            previewCaption.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
 
-            separator.topAnchor.constraint(equalTo: previewLabel.bottomAnchor, constant: 8),
+            previewFrame.topAnchor.constraint(equalTo: previewCaption.bottomAnchor, constant: 4),
+            previewFrame.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+            previewFrame.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
+            previewFrame.heightAnchor.constraint(equalToConstant: 150),
+
+            separator.topAnchor.constraint(equalTo: previewFrame.bottomAnchor, constant: 8),
             separator.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
             separator.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
 
@@ -252,14 +293,28 @@ final class PickerWindowController: NSObject, NSWindowDelegate,
         insertButton.isEnabled = selectedSnippet() != nil
     }
 
+    private let previewFont = NSFont(name: "Helvetica Neue", size: 13) ?? NSFont.systemFont(ofSize: 13)
+
     private func updatePreview() {
-        guard let snippet = selectedSnippet() else { previewLabel.stringValue = ""; return }
-        let body = Self.plainPreview(for: snippet)
-        previewLabel.stringValue = body.isEmpty ? "(empty snippet)" : body
+        guard let snippet = selectedSnippet() else {
+            previewView.string = ""
+            return
+        }
+        let rendered = attributedPreview(for: snippet)
+        if rendered.length == 0 {
+            previewView.textStorage?.setAttributedString(NSAttributedString(
+                string: "(empty snippet)",
+                attributes: [.font: previewFont, .foregroundColor: NSColor.secondaryLabelColor]
+            ))
+        } else {
+            previewView.textStorage?.setAttributedString(rendered)
+        }
+        previewView.scroll(NSPoint.zero)
     }
 
-    static func plainPreview(for snippet: Snippet) -> String {
-        var text: String
+    /// The snippet body rendered with its real formatting and images, tokens
+    /// (like {date}) shown as authored so you see exactly what will be inserted.
+    private func attributedPreview(for snippet: Snippet) -> NSAttributedString {
         if snippet.isRTFD {
             if let data = Data(base64Encoded: snippet.body),
                let attributed = try? NSAttributedString(
@@ -267,12 +322,13 @@ final class PickerWindowController: NSObject, NSWindowDelegate,
                    options: [.documentType: NSAttributedString.DocumentType.rtfd],
                    documentAttributes: nil
                ) {
-                text = attributed.string.replacingOccurrences(of: "\u{FFFC}", with: " [image] ")
-            } else {
-                text = "[image snippet]"
+                return attributed
             }
-        } else if snippet.isHTML {
-            if let data = snippet.body.data(using: .utf8),
+            return NSAttributedString(string: "[image snippet]", attributes: [.font: previewFont])
+        }
+        if snippet.isHTML {
+            let html = Expander.defaultFontWrapped(snippet.body)
+            if let data = html.data(using: .utf8),
                let attributed = try? NSAttributedString(
                    data: data,
                    options: [
@@ -281,17 +337,13 @@ final class PickerWindowController: NSObject, NSWindowDelegate,
                    ],
                    documentAttributes: nil
                ) {
-                text = attributed.string
-            } else {
-                text = snippet.body
+                return attributed
             }
-        } else {
-            text = snippet.body
         }
-        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        text = text.replacingOccurrences(of: "\n", with: " ")
-        if text.count > 160 { text = String(text.prefix(160)) + "…" }
-        return text
+        return NSAttributedString(
+            string: snippet.body,
+            attributes: [.font: previewFont, .foregroundColor: NSColor.black]
+        )
     }
 
     // MARK: - Insert

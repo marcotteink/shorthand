@@ -205,13 +205,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate,
         self.store = store
         self.monitor = monitor
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1150, height: 700),
+            contentRect: NSRect(x: 0, y: 0, width: 1150, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Shorthand"
-        window.minSize = NSSize(width: 1000, height: 560)
+        window.minSize = NSSize(width: 1000, height: 640)
         window.isReleasedWhenClosed = false
         window.center()
         window.setFrameAutosaveName("ShorthandCommandCenter")
@@ -680,7 +680,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate,
             tryScroll.trailingAnchor.constraint(equalTo: tryFrame.trailingAnchor),
             tryScroll.topAnchor.constraint(equalTo: tryFrame.topAnchor),
             tryScroll.bottomAnchor.constraint(equalTo: tryFrame.bottomAnchor),
-            tryFrame.heightAnchor.constraint(equalToConstant: 48)
+            tryFrame.heightAnchor.constraint(equalToConstant: 130)
         ])
 
         let labels = NSStackView(views: [caption, sub])
